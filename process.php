@@ -4,7 +4,7 @@ $endpoint = 'https://receipt-ocr-service.cognitiveservices.azure.com/'; // ご�
 $apiKey = '6MgeNRKrq80r3Fc3REHwxTRbLhHLTSxGrOqWlfjdZng1HHdgM0vNJQQJ99BAACi0881XJ3w3AAALACOGnNfz'; // ご自身のAPIキーを設定
 
 // OCRリクエスト用のURL
-$ocrUrl = $endpoint . 'vision/v3.2/read/analyze';
+$ocrUrl = $endpoint . 'vision/v3.2/read/analyze';　
 
 // ファイルアップロード処理
 if (!empty($_FILES['receipts'])) {
