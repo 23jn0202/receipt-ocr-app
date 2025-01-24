@@ -1,0 +1,7 @@
+{
+  "name": "my-php-app",
+  "require": {
+    "php": "^8.2",
+    "monolog/monolog": "^2.0"
+  }
+}
