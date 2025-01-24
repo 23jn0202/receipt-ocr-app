@@ -1,10 +1,10 @@
 <?php
-require 'vendor/autoload.php'; // ComposerでAzure SDKをインストールする必要があります
-use Microsoft\Azure\AI\Vision\VisionServiceClient;
-
 // Azureの設定
-$endpoint = getenv('https://receipt-ocr-service.cognitiveservices.azure.com/');
-$apiKey = getenv('6MgeNRKrq80r3Fc3REHwxTRbLhHLTSxGrOqWlfjdZng1HHdgM0vNJQQJ99BAACi0881XJ3w3AAALACOGnNfz');
+$endpoint = 'https://<your-endpoint>.cognitiveservices.azure.com/'; // ご自身のAzureのエンドポイントを設定
+$apiKey = '<your-api-key>'; // ご自身のAPIキーを設定
+
+// OCRリクエスト用のURL
+$ocrUrl = $endpoint . 'vision/v3.2/read/analyze';
 
 // ファイルアップロード処理
 if (!empty($_FILES['receipts'])) {
@@ -12,58 +12,76 @@ if (!empty($_FILES['receipts'])) {
     $results = [];
 
     foreach ($uploadedFiles as $index => $filePath) {
-        // Azure OCRを呼び出し
-        $client = new VisionServiceClient($endpoint, $apiKey);
-        $ocrResult = $client->analyzeImage($filePath, ['Read']);
+        // ファイルをバイナリ形式で読み込む
+        $imageData = file_get_contents($filePath);
 
-        // OCR結果の解析（例: 商品名、値段、合計金額を抽出）
-        $items = [];
-        foreach ($ocrResult->analyzeResult->lines as $line) {
-            if (preg_match('/(.+?)\s+¥(\d+)/u', $line->text, $matches)) {
-                $items[] = [
-                    'name' => $matches[1],
-                    'price' => $matches[2]
-                ];
-            } elseif (preg_match('/合計\s+¥(\d+)/u', $line->text, $matches)) {
-                $total = $matches[1];
+        // cURLを使用してAzure APIにリクエスト
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $ocrUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/octet-stream',
+            'Ocp-Apim-Subscription-Key: ' . $apiKey
+        ]);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $imageData);
+
+        $response = curl_exec($ch);
+        $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($statusCode == 202) {
+            // OCRの処理が開始されたら、結果を取得するためにポーリングします
+            // 読み取り結果が取得できるまで待つ
+            $operationLocation = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+            $result = null;
+            while (true) {
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, $operationLocation);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                    'Ocp-Apim-Subscription-Key: ' . $apiKey
+                ]);
+                $response = curl_exec($ch);
+                $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+
+                if ($statusCode == 200) {
+                    $result = json_decode($response, true);
+                    break;
+                }
+
+                // 一定時間待機してから再試行
+                sleep(1);
             }
+
+            // OCR結果の解析（例: 商品名、値段、合計金額を抽出）
+            if (isset($result['analyzeResult']['readResults'])) {
+                foreach ($result['analyzeResult']['readResults'] as $page) {
+                    foreach ($page['lines'] as $line) {
+                        if (preg_match('/(.+?)\s+¥(\d+)/u', $line['text'], $matches)) {
+                            $items[] = [
+                                'name' => $matches[1],
+                                'price' => $matches[2]
+                            ];
+                        } elseif (preg_match('/合計\s+¥(\d+)/u', $line['text'], $matches)) {
+                            $total = $matches[1];
+                        }
+                    }
+                }
+
+                // 結果表示
+                echo "<h2>抽出結果</h2>";
+                foreach ($items as $item) {
+                    echo "{$item['name']} ¥{$item['price']}<br>";
+                }
+                echo "合計 ¥{$total}<br><br>";
+            } else {
+                echo "OCR結果の取得に失敗しました。";
+            }
+        } else {
+            echo "OCRリクエストに失敗しました。ステータスコード: " . $statusCode;
         }
-
-        // 結果保存
-        $results[] = [
-            'items' => $items,
-            'total' => $total ?? null
-        ];
-
-        // ログに書き込み
-        file_put_contents('ocr.log', json_encode($results, JSON_UNESCAPED_UNICODE) . PHP_EOL, FILE_APPEND);
-    }
-
-    // 結果表示＆CSVダウンロードリンク
-    echo "<h2>抽出結果</h2>";
-    foreach ($results as $result) {
-        foreach ($result['items'] as $item) {
-            echo "{$item['name']} ¥{$item['price']}<br>";
-        }
-        echo "合計 ¥{$result['total']}<br><br>";
-    }
-
-    // CSV生成リンク
-    $csvFile = 'output.csv';
-    $fp = fopen($csvFile, 'w');
-    foreach ($results as $result) {
-        foreach ($result['items'] as $item) {
-            fputcsv($fp, [$item['name'], $item['price']]);
-        }
-        fputcsv($fp, ['合計', $result['total']]);
-    }
-    fclose($fp);
-
-    echo "<a href='$csvFile'>CSVファイルをダウンロード</a>";
-
-    if (!file_exists('ocr.log')) {
-        touch('ocr.log'); // ファイルがなければ作成
-        chmod('ocr.log', 0666); // 書き込み可能に設定
     }
 }
 ?>
