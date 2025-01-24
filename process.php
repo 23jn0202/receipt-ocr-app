@@ -1,7 +1,7 @@
 <?php
 // Azureの設定
-$endpoint = 'https://<your-endpoint>.cognitiveservices.azure.com/'; // ご自身のAzureのエンドポイントを設定
-$apiKey = '<your-api-key>'; // ご自身のAPIキーを設定
+$endpoint = 'https://receipt-ocr-service.cognitiveservices.azure.com/'; // ご自身のAzureのエンドポイントを設定
+$apiKey = '6MgeNRKrq80r3Fc3REHwxTRbLhHLTSxGrOqWlfjdZng1HHdgM0vNJQQJ99BAACi0881XJ3w3AAALACOGnNfz'; // ご自身のAPIキーを設定
 
 // OCRリクエスト用のURL
 $ocrUrl = $endpoint . 'vision/v3.2/read/analyze';
